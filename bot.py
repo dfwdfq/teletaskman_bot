@@ -31,7 +31,7 @@ class Bot:
         # Create application instance
         self.app = Application.builder().token(self.key).build()
         
-        # Create conversation handlers
+        # Create conversation handlers with improved cancel handling
         add_task_handler = ConversationHandler(
             entry_points=[
                 CommandHandler('add', self.start_add_task),
@@ -39,10 +39,13 @@ class Bot:
             ],
             states={
                 DESCRIPTION: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.save_task)
+                    MessageHandler(filters.TEXT & ~filters.Regex(r'^Cancel$'), self.save_task)
                 ],
             },
-            fallbacks=[CommandHandler('cancel', self.cancel_operation)]
+            fallbacks=[
+                CommandHandler('cancel', self.cancel_operation),
+                MessageHandler(filters.Regex(r'^Cancel$'), self.cancel_operation)
+            ]
         )
         
         complete_task_handler = ConversationHandler(
@@ -52,10 +55,13 @@ class Bot:
             ],
             states={
                 TASK_SELECTION: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.complete_task)
+                    MessageHandler(filters.TEXT & ~filters.Regex(r'^Cancel$'), self.complete_task)
                 ],
             },
-            fallbacks=[CommandHandler('cancel', self.cancel_operation)]
+            fallbacks=[
+                CommandHandler('cancel', self.cancel_operation),
+                MessageHandler(filters.Regex(r'^Cancel$'), self.cancel_operation)
+            ]
         )
         
         # Register handlers
@@ -90,7 +96,8 @@ class Bot:
             "- Add tasks with /add or the Add button\n"
             "- List active tasks with /list or the List button\n"
             "- Complete tasks with /done or the Done button\n"
-            "- View completed tasks with /done_tasks or the Done Tasks button"
+            "- View completed tasks with /done_tasks or the Done Tasks button\n\n"
+            "You can cancel any action by pressing the Cancel button"
         )
         await update.message.reply_html(
             welcome_text,
@@ -184,6 +191,7 @@ class Bot:
         )
 
     async def start_add_task(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Starts the task creation process"""
         await update.message.reply_text(
             "📝 Please describe your task:",
             reply_markup=ReplyKeyboardMarkup([["Cancel"]], resize_keyboard=True)
@@ -191,6 +199,11 @@ class Bot:
         return DESCRIPTION
 
     async def save_task(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Saves the task description and ends the conversation"""
+        # Check if user pressed Cancel
+        if update.message.text.lower() == "cancel":
+            return await self.cancel_operation(update, context)
+            
         description = update.message.text
         user = update.effective_user
         created_at = datetime.now().isoformat()
@@ -210,6 +223,7 @@ class Bot:
         return ConversationHandler.END
     
     async def start_done_process(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Start the task completion process"""
         tasks = self.db.get_active_tasks()
         if not tasks:
             await update.message.reply_text(
@@ -220,12 +234,17 @@ class Bot:
             
         await update.message.reply_text(
             "✅ Reply with the ID of the task you want to complete\n"
-            "Use /list to see active tasks",
+            "Or press Cancel to abort",
             reply_markup=ReplyKeyboardMarkup([["Cancel"]], resize_keyboard=True)
         )
         return TASK_SELECTION
 
     async def complete_task(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Mark a task as completed based on user selection"""
+        # Check if user pressed Cancel
+        if update.message.text.lower() == "cancel":
+            return await self.cancel_operation(update, context)
+            
         try:
             task_id = int(update.message.text)
             user = update.effective_user
@@ -271,6 +290,7 @@ class Bot:
             return TASK_SELECTION
     
     async def cancel_operation(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Cancels any ongoing operation and returns to main menu"""
         await update.message.reply_text(
             "❌ Operation canceled",
             reply_markup=self.main_menu_keyboard()
@@ -279,6 +299,7 @@ class Bot:
     
     @staticmethod
     def main_menu_keyboard():
+        """Main menu keyboard without Help button"""
         return ReplyKeyboardMarkup(
             [[ "Add", "List", "Done", "Done Tasks"]],
             resize_keyboard=True,
