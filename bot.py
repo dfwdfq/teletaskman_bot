@@ -23,6 +23,15 @@ class Bot:
         self.key = os.getenv("BOT_KEY")
         if not self.key:
             raise Exception("No 'BOT_KEY' in env variables!")
+            
+        # Get allowed users from environment variable
+        allowed_users = os.getenv("ALLOWED_USERS", "")
+        self.allowed_user_ids = set()
+        if allowed_users:
+            try:
+                self.allowed_user_ids = set(int(id.strip()) for id in allowed_users.split(","))
+            except ValueError:
+                print("Invalid format for ALLOWED_USERS. Should be comma-separated integers")
         
         # Initialize database
         self.db = Database()
@@ -74,10 +83,16 @@ class Bot:
         # Add error handler
         self.app.add_error_handler(self.error_handler)
 
+    def is_user_allowed(self, user_id: int) -> bool:
+        """Check if user is in the allowed list"""
+        if not self.allowed_user_ids:  # If no whitelist, allow all
+            return True
+        return user_id in self.allowed_user_ids
+
     async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Log errors and send a message to the user"""
         print(f"Update {update} caused error {context.error}")
-        if update and hasattr(update, 'message'):
+        if update and hasattr(update, 'message') and self.is_user_allowed(update.effective_user.id):
             await update.message.reply_text(
                 "⚠️ An error occurred. Please try again later.",
                 reply_markup=self.main_menu_keyboard()
@@ -89,6 +104,12 @@ class Bot:
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
+        
+        # Authorization check
+        if not self.is_user_allowed(user.id):
+            await update.message.reply_text("⛔ Sorry, this bot is private and you're not authorized to use it.")
+            return
+            
         welcome_text = (
             f"Hi {user.mention_html()}! \n\n"
             "I'm a simple script to manage tasks. Here's what you can do:\n"
@@ -104,6 +125,10 @@ class Bot:
         )
         
     async def handle_button_click(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # Authorization check
+        if not self.is_user_allowed(update.effective_user.id):
+            return
+            
         button_text = update.message.text
         
         if button_text == "List":
@@ -112,6 +137,10 @@ class Bot:
             await self.list_done_tasks(update, context)
         
     async def list_tasks(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # Authorization check
+        if not self.is_user_allowed(update.effective_user.id):
+            return
+            
         tasks = self.db.get_active_tasks()
         
         if not tasks:
@@ -150,6 +179,10 @@ class Bot:
         )
     
     async def list_done_tasks(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # Authorization check
+        if not self.is_user_allowed(update.effective_user.id):
+            return
+            
         tasks = self.db.get_done_tasks()
         
         if not tasks:
@@ -191,6 +224,10 @@ class Bot:
         )
 
     async def start_add_task(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        # Authorization check
+        if not self.is_user_allowed(update.effective_user.id):
+            return ConversationHandler.END
+            
         """Starts the task creation process"""
         await update.message.reply_text(
             "📝 Please describe your task:",
@@ -199,6 +236,10 @@ class Bot:
         return DESCRIPTION
 
     async def save_task(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        # Authorization check
+        if not self.is_user_allowed(update.effective_user.id):
+            return ConversationHandler.END
+            
         """Saves the task description and ends the conversation"""
         # Check if user pressed Cancel
         if update.message.text.lower() == "cancel":
@@ -223,6 +264,10 @@ class Bot:
         return ConversationHandler.END
     
     async def start_done_process(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        # Authorization check
+        if not self.is_user_allowed(update.effective_user.id):
+            return ConversationHandler.END
+            
         """Start the task completion process"""
         tasks = self.db.get_active_tasks()
         if not tasks:
@@ -258,6 +303,10 @@ class Bot:
         return TASK_SELECTION
 
     async def complete_task(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        # Authorization check
+        if not self.is_user_allowed(update.effective_user.id):
+            return ConversationHandler.END
+            
         """Mark a task as completed based on user selection"""
         # Check if user pressed Cancel
         if update.message.text.lower() == "cancel":
@@ -320,6 +369,10 @@ class Bot:
             return TASK_SELECTION
     
     async def cancel_operation(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        # Authorization check
+        if not self.is_user_allowed(update.effective_user.id):
+            return ConversationHandler.END
+            
         """Cancels any ongoing operation and returns to main menu"""
         # Clear temporary state
         if 'current_active_tasks' in context.user_data:
