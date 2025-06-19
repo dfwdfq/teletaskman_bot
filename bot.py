@@ -392,7 +392,3 @@ class Bot:
             resize_keyboard=True,
             one_time_keyboard=True
         )
-
-if __name__ == "__main__":
-    bot = Bot()
-    bot.run()
