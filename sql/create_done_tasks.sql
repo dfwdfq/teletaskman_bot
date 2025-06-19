@@ -1,6 +1,0 @@
-CREATE TABLE IF NOT EXISTS DoneTasks (
-id INTEGER PRIMARY KEY,
-user TEXT NOT NULL,
-content TEXT NOT NULL,
-time_point TEXT NOT NULL
-);

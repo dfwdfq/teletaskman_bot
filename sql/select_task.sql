@@ -1,0 +1,1 @@
+SELECT * FROM active_tasks WHERE id = ?
