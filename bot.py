@@ -1,5 +1,4 @@
 import os
-import sqlite3 as sql
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -123,8 +122,9 @@ class Bot:
             return
             
         task_list = []
-        for task in tasks:
-            task_id, creator_id, creator_name, description, created_at = task
+        # Use sequential index instead of database ID
+        for idx, task in enumerate(tasks, start=1):
+            _, creator_id, creator_name, description, created_at = task
             
             # Format creation date
             try:
@@ -134,14 +134,14 @@ class Bot:
                 date_str = created_at
                 
             task_list.append(
-                f"{task_id}. 🟢 {description} "
+                f"{idx}. 🟢 {description} "
                 f"(by {creator_name} on {date_str})"
             )
         
         response = (
             f"📋 *Active Tasks* ({len(tasks)} total):\n\n" +
             "\n".join(task_list) +
-            "\n\n_Use /done [ID] to complete a task_"
+            "\n\n_Use /done [number] to complete a task_"
         )
         
         await update.message.reply_markdown(
@@ -217,7 +217,7 @@ class Bot:
         )
         
         await update.message.reply_text(
-            f"✅ Task #{task_id} saved: {description}",
+            f"✅ Task saved: {description}",
             reply_markup=self.main_menu_keyboard()
         )
         return ConversationHandler.END
@@ -232,9 +232,27 @@ class Bot:
             )
             return ConversationHandler.END
             
+        # Store tasks in context for later reference
+        context.user_data['current_active_tasks'] = tasks
+        
+        # Format task list with sequential numbers
+        task_list = []
+        for idx, task in enumerate(tasks, start=1):
+            _, creator_id, creator_name, description, created_at = task
+            try:
+                dt = datetime.fromisoformat(created_at)
+                date_str = dt.strftime("%b %d")
+            except:
+                date_str = created_at
+                
+            task_list.append(
+                f"{idx}. {description} (by {creator_name} on {date_str})"
+            )
+            
         await update.message.reply_text(
-            "✅ Reply with the ID of the task you want to complete\n"
-            "Or press Cancel to abort",
+            "✅ Select a task to mark as done:\n\n" +
+            "\n".join(task_list) +
+            "\n\nReply with the task number:",
             reply_markup=ReplyKeyboardMarkup([["Cancel"]], resize_keyboard=True)
         )
         return TASK_SELECTION
@@ -246,9 +264,25 @@ class Bot:
             return await self.cancel_operation(update, context)
             
         try:
-            task_id = int(update.message.text)
+            # Get the task number (sequential index)
+            task_num = int(update.message.text)
             user = update.effective_user
             completed_at = datetime.now().isoformat()
+            
+            # Get tasks from context
+            tasks = context.user_data.get('current_active_tasks', [])
+            
+            # Validate task number
+            if task_num < 1 or task_num > len(tasks):
+                await update.message.reply_text(
+                    "⚠️ Invalid task number! Please select from the list.",
+                    reply_markup=ReplyKeyboardMarkup([["Cancel"]], resize_keyboard=True)
+                )
+                return TASK_SELECTION
+            
+            # Get the actual task from the stored list
+            task = tasks[task_num-1]
+            task_id = task[0]  # First element is database ID
             
             # Complete task in database
             success = self.db.complete_task(
@@ -259,17 +293,13 @@ class Bot:
             )
             
             if success:
-                task = self.db.get_task(task_id)
-                if task:
-                    _, creator_id, creator_name, description, _ = task
-                    message = (
-                        f"🎉 Task #{task_id} completed!\n"
-                        f"• Task: {description}\n"
-                        f"• Created by: {creator_name}\n"
-                        f"• Completed by: {user.full_name}"
-                    )
-                else:
-                    message = f"✅ Task #{task_id} marked as completed"
+                _, creator_id, creator_name, description, _ = task
+                message = (
+                    f"🎉 Task completed!\n"
+                    f"• Task: {description}\n"
+                    f"• Created by: {creator_name}\n"
+                    f"• Completed by: {user.full_name}"
+                )
                 
                 await update.message.reply_text(
                     message,
@@ -278,7 +308,7 @@ class Bot:
                 return ConversationHandler.END
             else:
                 await update.message.reply_text(
-                    "⚠️ Invalid task ID! Please enter a valid task number.",
+                    "⚠️ Failed to complete task! Please try again.",
                     reply_markup=ReplyKeyboardMarkup([["Cancel"]], resize_keyboard=True)
                 )
                 return TASK_SELECTION
@@ -291,6 +321,10 @@ class Bot:
     
     async def cancel_operation(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Cancels any ongoing operation and returns to main menu"""
+        # Clear temporary state
+        if 'current_active_tasks' in context.user_data:
+            del context.user_data['current_active_tasks']
+            
         await update.message.reply_text(
             "❌ Operation canceled",
             reply_markup=self.main_menu_keyboard()
@@ -305,3 +339,7 @@ class Bot:
             resize_keyboard=True,
             one_time_keyboard=True
         )
+
+if __name__ == "__main__":
+    bot = Bot()
+    bot.run()
