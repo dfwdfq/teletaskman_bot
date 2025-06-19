@@ -17,10 +17,7 @@ class Database:
         with open(os.path.join(self.sql_path, sql_file), "r") as f:
             return f.read()
         
-    def read_scripts(self):
-        if not os.path.exists(self.sql_path):
-            os.makedirs(self.sql_path)
-            
+    def read_scripts(self):            
         t_files = [x for x in os.listdir(self.sql_path) if x.endswith(".sql")]
         for f in t_files:
             key, _ = os.path.splitext(f)
