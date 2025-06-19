@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXIST DoneTasks (
+id INTEGER PRIMARY KEY,
+user TEXT NOT NULL,
+content TEXT NOT NULL,
+time_point TEXT NOT NULL
+);
