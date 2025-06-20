@@ -4,7 +4,7 @@ import os
 class Database:
     def __init__(self):
         self.scripts = {}
-        self.sql_path = "teletaskman/sql/" 
+        self.sql_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sql')
         self.read_scripts()
 
         if not os.path.exists("data.sql"):
